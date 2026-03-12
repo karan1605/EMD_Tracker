@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role and approval status",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "description": "Full name of the user" },
+        "mobileNumber": { "type": "string", "description": "Mobile number for OTP" },
+        "email": { "type": "string", "description": "Email address" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected"], "description": "Admin approval status" },
+        "role": { "type": "string", "enum": ["Owner", "Employee"], "description": "User role" },
+        "permissions": { "type": "string", "enum": ["Only View", "Only Add", "All Access"], "description": "Specific access level" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "mobileNumber", "email", "status", "role", "permissions"]
+    },
+    "EMD_Record": {
+      "title": "EMD Record",
+      "description": "Details of an Earnest Money Deposit",
+      "type": "object",
+      "properties": {
+        "emdType": { "type": "string", "enum": ["FD", "DD", "BG", "Other"] },
+        "emdTypeOther": { "type": "string" },
+        "emdNumber": { "type": "string", "description": "Unique EMD identifier" },
+        "emdAmount": { "type": "number" },
+        "bidNumber": { "type": "string" },
+        "bidStartDate": { "type": "string", "format": "date" },
+        "bidEndDate": { "type": "string", "format": "date" },
+        "department": { "type": "string" },
+        "depositLocation": { "type": "string", "enum": ["Deposited in Department", "In Office / Home"] },
+        "deliveryMethod": { "type": "string", "enum": ["BY HAND", "BY POST"] },
+        "deliveryDate": { "type": "string", "format": "date" },
+        "trackingId": { "type": "string" },
+        "courierReceiptPhoto": { "type": "string" },
+        "company": { "type": "string" },
+        "bank": { "type": "string" },
+        "maturityDate": { "type": "string", "format": "date" },
+        "notes": { "type": "string" },
+        "photos": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["Active", "Withdrawn"] },
+        "withdrawalDate": { "type": "string", "format": "date" },
+        "returnMethod": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["emdType", "emdNumber", "emdAmount", "bidNumber", "department", "depositLocation", "company", "bank", "status"]
+    },
+    "Withdrawal_Request": {
+      "title": "Withdrawal Request",
+      "description": "Request to withdraw an EMD",
+      "type": "object",
+      "properties": {
+        "emdId": { "type": "string" },
+        "emdNumber": { "type": "string" },
+        "withdrawalDate": { "type": "string", "format": "date" },
+        "returnMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected"] },
+        "requestedBy": { "type": "string" },
+        "requestedByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["emdId", "emdNumber", "withdrawalDate", "returnMethod", "status", "requestedBy"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System alerts and notifications",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["Maturity", "BidEnd", "Withdrawal", "Approval"] },
+        "read": { "type": "boolean" },
+        "targetUser": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "type", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/emd_records/{emdId}": { "schema": "EMD_Record", "description": "EMD records" },
+    "/withdrawal_requests/{requestId}": { "schema": "Withdrawal_Request", "description": "Withdrawal requests" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "User notifications" }
+  }
+}

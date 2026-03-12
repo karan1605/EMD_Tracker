@@ -1,0 +1,5 @@
+{
+  "name": "EMD Tracker Pro",
+  "description": "Enterprise-level Earnest Money Deposit (EMD) management system for government tender bidding. Features real-time tracking, maturity alerts, role-based access control, and comprehensive reporting.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"]
+}

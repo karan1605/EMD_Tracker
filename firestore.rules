@@ -1,0 +1,115 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: userId (Firebase Auth UID)
+// Fields:
+//   - fullName: string (required)
+//   - mobileNumber: string (required)
+//   - email: string (required)
+//   - status: string (Pending, Approved, Rejected)
+//   - role: string (Owner, Employee)
+//   - permissions: string (Only View, Only Add, All Access)
+//   - createdAt: timestamp (required)
+//
+// Collection: emd_records
+// Document ID: auto-generated
+// Fields:
+//   - emdType: string (FD, DD, BG, Other)
+//   - emdNumber: string (unique, required)
+//   - emdAmount: number (required)
+//   - bidNumber: string (required)
+//   - bidStartDate: string (required)
+//   - bidEndDate: string (required)
+//   - department: string (required)
+//   - depositLocation: string (required)
+//   - company: string (required)
+//   - bank: string (required)
+//   - status: string (Active, Withdrawn)
+//   - createdBy: string (userId)
+//   - createdAt: timestamp
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Owner' ||
+         request.auth.token.email == "karan.gupta.4977@gmail.com" ||
+         request.auth.token.email == "demo@emdtracker.com");
+    }
+    
+    function isApproved() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'Approved' || isAdmin());
+    }
+    
+    function hasPermission(perm) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return user.permissions == perm || user.permissions == 'All Access' || user.role == 'Owner';
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && 
+                      hasOnlyAllowedFields(['fullName', 'mobileNumber', 'email', 'status', 'role', 'permissions', 'createdAt']) &&
+                      (
+                        (request.resource.data.status == 'Pending' && request.resource.data.role == 'Employee') ||
+                        (request.resource.data.email == "karan.gupta.4977@gmail.com" || request.resource.data.email == "demo@emdtracker.com")
+                      );
+      allow update: if isAdmin();
+    }
+
+    match /emd_records/{emdId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && hasPermission('Only Add') &&
+                      hasOnlyAllowedFields(['emdType', 'emdTypeOther', 'emdNumber', 'emdAmount', 'bidNumber', 'bidStartDate', 'bidEndDate', 'department', 'depositLocation', 'deliveryMethod', 'deliveryDate', 'trackingId', 'courierReceiptPhoto', 'company', 'companyOther', 'bank', 'bankOther', 'maturityDate', 'notes', 'photos', 'status', 'createdAt', 'createdBy']);
+      allow update: if isApproved() && hasPermission('All Access');
+    }
+
+    match /withdrawal_requests/{requestId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && hasPermission('All Access');
+      allow update: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.targetUser || isAdmin());
+      allow create: if isAdmin() || isApproved(); // System or users can create notifications
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.targetUser && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+    }
+    
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
