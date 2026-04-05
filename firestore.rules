@@ -92,7 +92,7 @@ service cloud.firestore {
       allow read: if isApproved();
       allow create: if isApproved() && (hasPermission('Only Add') || hasPermission('Add/Withdraw Only')) &&
                       hasOnlyAllowedFields(['emdType', 'emdTypeOther', 'emdNumber', 'emdAmount', 'bidNumber', 'bidStartDate', 'bidEndDate', 'department', 'depositLocation', 'deliveryMethod', 'deliveryDate', 'trackingId', 'courierReceiptPhoto', 'company', 'companyOther', 'bank', 'bankOther', 'maturityDate', 'notes', 'photos', 'status', 'createdAt', 'createdBy']);
-      allow update: if isApproved() && (hasPermission('All Access') || hasPermission('Add/Withdraw Only'));
+      allow update: if isAdmin();
     }
 
     match /withdrawal_requests/{requestId} {
