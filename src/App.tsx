@@ -1206,8 +1206,7 @@ function WithdrawView() {
         notes,
         createdAt: serverTimestamp()
       });
-      alert('Withdrawal Request Submitted Successfully.
-Wait for Owner approval.');
+      alert('Withdrawal Request Submitted Successfully. Wait for Owner approval.');
       setRecord(null);
       setEmdNumber('');
       setNotes('');
