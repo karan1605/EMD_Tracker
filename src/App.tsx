@@ -59,6 +59,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
 import { AuthProvider, useAuth } from './AuthContext';
 import { Button, Input, Card, FileUpload, TextArea, cn } from './components/UI';
+import { sendOTPEmail } from './resend';
 import { 
   EMDRecord, 
   UserProfile, 
@@ -308,7 +309,11 @@ const WelcomeScreen: React.FC<{ onLogin: () => void; onCreate: () => void }> = (
   </div>
 );
 
-const AuthPage: React.FC<{ mode: 'login' | 'signup'; onToggle: () => void }> = ({ mode, onToggle }) => {
+const AuthPage: React.FC<{ 
+  mode: 'login' | 'signup'; 
+  onToggle: () => void;
+  onOtpSent: (email: string) => void;
+}> = ({ mode, onToggle, onOtpSent }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -335,10 +340,48 @@ const AuthPage: React.FC<{ mode: 'login' | 'signup'; onToggle: () => void }> = (
           createdAt: serverTimestamp(),
         });
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        // Step 1: Verify Password first (Firebase)
+        console.log("DEBUG: Attempting Firebase sign-in...");
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        console.log("DEBUG: Firebase sign-in successful for:", userCredential.user.email);
+        
+        // IMPORTANT: We set the verifying state IMMEDIATELY after sign-in success
+        // This coordinates with the parent App to keep this component mounted
+        onOtpSent(email);
+
+        try {
+          // Step 2: Generate OTP
+          const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          console.log("DEBUG: Generated OTP:", generatedOtp);
+          
+          // Step 3: Store in Firestore
+          await setDoc(doc(db, 'otps', email), {
+            otp: generatedOtp,
+            expiresAt: new Date(Date.now() + 10 * 60000),
+            createdAt: serverTimestamp()
+          });
+          console.log("DEBUG: OTP stored in Firestore");
+
+          // Step 4: Check for API Key
+          const apiKey = import.meta.env.VITE_RESEND_API_KEY;
+          if (!apiKey || apiKey === 'your_resend_api_key_here' || apiKey.includes('placeholder')) {
+            console.warn("DEBUG: Using placeholder API key. Email will not be sent.");
+            setError("Warning: Using placeholder Resend API Key. Check browser console for OTP code.");
+          } else {
+            console.log("DEBUG: Attempting to send email via Resend...");
+            await sendOTPEmail(email, generatedOtp);
+            console.log("DEBUG: Email sent successfully");
+          }
+        } catch (subErr: any) {
+          console.error("DEBUG: Internal OTP Flow Error:", subErr);
+          setError("OTP created but email failed. Error: " + subErr.message);
+        }
       }
     } catch (err: any) {
-      setError(err.message);
+      console.error("DEBUG: Firebase Auth Failure:", err);
+      setError("Login failed: " + err.message);
+      // We ONLY sign out if the primary Password check failed
+      await signOut(auth);
     } finally {
       setLoading(false);
     }
@@ -400,7 +443,7 @@ const AuthPage: React.FC<{ mode: 'login' | 'signup'; onToggle: () => void }> = (
             {error && <p className="text-sm text-rose-500 bg-rose-50 p-3 rounded-lg">{error}</p>}
 
             <Button type="submit" loading={loading} className="w-full h-12 mt-4">
-              {mode === 'signup' ? 'Create Account' : 'Login'}
+              {mode === 'signup' ? 'Create Account' : 'Send OTP'}
             </Button>
           </form>
 
@@ -409,6 +452,88 @@ const AuthPage: React.FC<{ mode: 'login' | 'signup'; onToggle: () => void }> = (
               {mode === 'signup' ? 'Already have an account? Login' : "Don't have an account? Sign up"}
             </button>
           </div>
+        </Card>
+      </motion.div>
+    </div>
+  );
+};
+
+const OTPVerificationPage: React.FC<{ 
+  email: string; 
+  onVerified: () => void; 
+  onBack: () => void;
+}> = ({ email, onVerified, onBack }) => {
+  const [otp, setOtp] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const otpDoc = await getDoc(doc(db, 'otps', email));
+      if (!otpDoc.exists() || !otpDoc.data().otp) {
+        throw new Error('OTP expired or not found. Please request a new one.');
+      }
+
+      const data = otpDoc.data();
+      if (data.otp !== otp) {
+        throw new Error('Invalid verification code.');
+      }
+
+      if (data.expiresAt.toDate() < new Date()) {
+        throw new Error('Verification code has expired.');
+      }
+
+      await setDoc(doc(db, 'otps', email), {}); // Clear OTP
+      onVerified();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md w-full">
+        <Card className="p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <ShieldCheck className="w-8 h-8 text-indigo-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900">Verify Identity</h2>
+            <p className="text-slate-500 mt-1">We've sent a 6-digit code to</p>
+            <p className="font-bold text-indigo-600 mt-1">{email}</p>
+          </div>
+
+          <form onSubmit={handleVerifyOtp} className="space-y-6">
+            <Input 
+              label="Verification Code" 
+              placeholder="000000" 
+              required 
+              maxLength={6}
+              className="text-center text-2xl tracking-[0.5em] font-mono"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+            />
+
+            {error && <p className="text-sm text-rose-500 bg-rose-50 p-3 rounded-lg">{error}</p>}
+
+            <Button type="submit" loading={loading} className="w-full h-12">
+              Verify & Dashboard
+            </Button>
+            
+            <button 
+              type="button" 
+              onClick={onBack}
+              className="w-full text-sm text-slate-400 hover:text-indigo-600 transition-colors"
+            >
+              ← Back to Login
+            </button>
+          </form>
         </Card>
       </motion.div>
     </div>
@@ -447,6 +572,35 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // OTP Verification State (Persist in localStorage to survive refresh)
+  const [otpVerified, setOtpVerified] = useState(() => {
+    return localStorage.getItem('otp_verified') === 'true';
+  });
+  const [verifyingEmail, setVerifyingEmail] = useState<string | null>(() => {
+    return localStorage.getItem('verifying_email');
+  });
+
+  const handleOtpVerified = () => {
+    setOtpVerified(true);
+    localStorage.setItem('otp_verified', 'true');
+  };
+
+  const handleOtpSent = (email: string) => {
+    setVerifyingEmail(email);
+    localStorage.setItem('verifying_email', email);
+  };
+
+  useEffect(() => {
+    // ONLY clear states if there is absolutely no user session
+    // and we haven't just started a verification flow
+    if (!user && !localStorage.getItem('verifying_email')) {
+      setOtpVerified(false);
+      setVerifyingEmail(null);
+      localStorage.removeItem('otp_verified');
+      localStorage.removeItem('verifying_email');
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
     const q = query(
@@ -460,6 +614,12 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  useEffect(() => {
+    if (user && localStorage.getItem('otp_verified') === 'true') {
+      setOtpVerified(true);
+    }
+  }, [user]);
+
   if (!isAuthReady || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -471,9 +631,36 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    if (authMode === 'welcome') return <WelcomeScreen onLogin={() => setAuthMode('login')} onCreate={() => setAuthMode('signup')} />;
-    return <AuthPage mode={authMode === 'login' ? 'login' : 'signup'} onToggle={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} />;
+  // Auth flow logic
+  const isVerifying = user && !otpVerified && (verifyingEmail || localStorage.getItem('verifying_email'));
+
+  if (!user || (!otpVerified && !isVerifying)) {
+    if (authMode === 'welcome' && !user) return <WelcomeScreen onLogin={() => setAuthMode('login')} onCreate={() => setAuthMode('signup')} />;
+    return (
+      <AuthPage 
+        mode={authMode === 'login' ? 'login' : 'signup'} 
+        onToggle={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} 
+        onOtpSent={handleOtpSent}
+      />
+    );
+  }
+
+  // If user is logged in but hasn't verified OTP
+  if (!otpVerified) {
+    const displayEmail = verifyingEmail || localStorage.getItem('verifying_email') || user.email || '';
+    return (
+      <OTPVerificationPage 
+        email={displayEmail} 
+        onVerified={handleOtpVerified} 
+        onBack={() => {
+          setVerifyingEmail(null);
+          setOtpVerified(false);
+          localStorage.removeItem('verifying_email');
+          localStorage.removeItem('otp_verified');
+          signOut(auth);
+        }}
+      />
+    );
   }
 
   if (profile?.status === 'Pending' && profile?.role !== 'Owner') return <PendingApproval />;

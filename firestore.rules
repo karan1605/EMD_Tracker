@@ -107,6 +107,10 @@ service cloud.firestore {
       allow update: if isAuthenticated() && request.auth.uid == resource.data.targetUser && 
                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
+
+    match /otps/{email} {
+      allow read, write: if isAuthenticated();
+    }
     
     match /{path=**} {
       allow read, write: if false;
