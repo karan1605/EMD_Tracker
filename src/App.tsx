@@ -474,6 +474,12 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    if (profile?.permissions === 'Add/Withdraw Only' && activeTab === 'dashboard') {
+      setActiveTab('add-emd');
+    }
+  }, [profile, activeTab]);
+
+  useEffect(() => {
     if (!user) return;
     const q = query(
       collection(db, 'notifications'),
@@ -543,12 +549,12 @@ export default function App() {
             </div>
 
             <div className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
-              <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />}
               <SidebarItem icon={<PlusCircle className="w-5 h-5" />} label="Add EMD" active={activeTab === 'add-emd'} onClick={() => setActiveTab('add-emd')} />
               <SidebarItem icon={<ArrowDownLeft className="w-5 h-5" />} label="Withdraw EMD" active={activeTab === 'withdraw'} onClick={() => setActiveTab('withdraw')} />
-              <SidebarItem icon={<History className="w-5 h-5" />} label="Records" active={activeTab === 'records'} onClick={() => setActiveTab('records')} />
-              <SidebarItem icon={<AlertTriangle className="w-5 h-5" />} label="Risk Monitor" active={activeTab === 'risk'} onClick={() => setActiveTab('risk')} />
-              <SidebarItem icon={<Bell className="w-5 h-5" />} label="Notifications" active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} badge={unreadCount} />
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<History className="w-5 h-5" />} label="Records" active={activeTab === 'records'} onClick={() => setActiveTab('records')} />}
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<AlertTriangle className="w-5 h-5" />} label="Risk Monitor" active={activeTab === 'risk'} onClick={() => setActiveTab('risk')} />}
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<Bell className="w-5 h-5" />} label="Notifications" active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} badge={unreadCount} />}
               
               {profile?.role === 'Owner' && (
                 <div className="pt-6 mt-6 border-t border-slate-100">
@@ -1323,6 +1329,14 @@ function UserManagementView() {
     }
   };
 
+  const handlePermissionChange = async (userId: string, permissions: string) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { permissions });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -1330,8 +1344,8 @@ function UserManagementView() {
           <thead>
             <tr className="text-left border-b border-slate-100">
               <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">User</th>
-              <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">Role</th>
               <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">Status</th>
+              <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">Permissions</th>
               <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
@@ -1349,7 +1363,6 @@ function UserManagementView() {
                     </div>
                   </div>
                 </td>
-                <td className="py-4 text-slate-600">{user.role}</td>
                 <td className="py-4">
                   <span className={cn(
                     "px-2 py-1 rounded-lg text-xs font-bold",
@@ -1358,6 +1371,18 @@ function UserManagementView() {
                   )}>
                     {user.status}
                   </span>
+                </td>
+                <td className="py-4">
+                  <select 
+                    value={user.permissions || (user.role === 'Owner' ? 'All Access' : 'Only View')} 
+                    onChange={(e) => handlePermissionChange(user.uid, e.target.value)}
+                    className="border border-slate-200 rounded-lg p-2 text-sm bg-white text-slate-700 outline-none focus:border-indigo-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={user.role === 'Owner'}
+                  >
+                    <option value="All Access">All Access</option>
+                    <option value="Only View">Only View</option>
+                    <option value="Add/Withdraw Only">Add/Withdraw Only</option>
+                  </select>
                 </td>
                 <td className="py-4 text-right">
                   {user.status === 'Pending' && (
