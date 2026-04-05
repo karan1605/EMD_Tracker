@@ -38,7 +38,8 @@ import {
   GoogleAuthProvider, 
   signOut, 
   createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword 
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail 
 } from 'firebase/auth';
 import { 
   collection, 
@@ -59,7 +60,6 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
 import { AuthProvider, useAuth } from './AuthContext';
 import { Button, Input, Card, FileUpload, TextArea, cn } from './components/UI';
-import { sendOTPEmail } from './resend';
 import { 
   EMDRecord, 
   UserProfile, 
@@ -310,21 +310,22 @@ const WelcomeScreen: React.FC<{ onLogin: () => void; onCreate: () => void }> = (
 );
 
 const AuthPage: React.FC<{ 
-  mode: 'login' | 'signup'; 
-  onToggle: () => void;
-  onOtpSent: (email: string) => void;
-}> = ({ mode, onToggle, onOtpSent }) => {
+  mode: 'login' | 'signup' | 'forgot-password'; 
+  onToggle: (mode: 'login' | 'signup' | 'forgot-password') => void;
+}> = ({ mode, onToggle }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setMessage('');
 
     try {
       if (mode === 'signup') {
@@ -339,49 +340,18 @@ const AuthPage: React.FC<{
           permissions: isAdminEmail ? 'All Access' : 'Only View',
           createdAt: serverTimestamp(),
         });
-      } else {
-        // Step 1: Verify Password first (Firebase)
-        console.log("DEBUG: Attempting Firebase sign-in...");
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        console.log("DEBUG: Firebase sign-in successful for:", userCredential.user.email);
-        
-        // IMPORTANT: We set the verifying state IMMEDIATELY after sign-in success
-        // This coordinates with the parent App to keep this component mounted
-        onOtpSent(email);
-
-        try {
-          // Step 2: Generate OTP
-          const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-          console.log("DEBUG: Generated OTP:", generatedOtp);
-          
-          // Step 3: Store in Firestore
-          await setDoc(doc(db, 'otps', email), {
-            otp: generatedOtp,
-            expiresAt: new Date(Date.now() + 10 * 60000),
-            createdAt: serverTimestamp()
-          });
-          console.log("DEBUG: OTP stored in Firestore");
-
-          // Step 4: Check for API Key
-          const apiKey = import.meta.env.VITE_RESEND_API_KEY;
-          if (!apiKey || apiKey === 'your_resend_api_key_here' || apiKey.includes('placeholder')) {
-            console.warn("DEBUG: Using placeholder API key. Email will not be sent.");
-            setError("Warning: Using placeholder Resend API Key. Check browser console for OTP code.");
-          } else {
-            console.log("DEBUG: Attempting to send email via Resend...");
-            await sendOTPEmail(email, generatedOtp);
-            console.log("DEBUG: Email sent successfully");
-          }
-        } catch (subErr: any) {
-          console.error("DEBUG: Internal OTP Flow Error:", subErr);
-          setError("OTP created but email failed. Error: " + subErr.message);
-        }
+      } else if (mode === 'login') {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else if (mode === 'forgot-password') {
+        await sendPasswordResetEmail(auth, email);
+        setMessage('Password reset email sent! Check your inbox.');
       }
     } catch (err: any) {
       console.error("DEBUG: Firebase Auth Failure:", err);
-      setError("Login failed: " + err.message);
-      // We ONLY sign out if the primary Password check failed
-      await signOut(auth);
+      setError(err.message);
+      if (mode === 'login') {
+        await signOut(auth);
+      }
     } finally {
       setLoading(false);
     }
@@ -397,10 +367,10 @@ const AuthPage: React.FC<{
         <Card className="p-8">
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-slate-900">
-              {mode === 'signup' ? 'Create Account' : 'Welcome Back'}
+              {mode === 'signup' ? 'Create Account' : mode === 'forgot-password' ? 'Reset Password' : 'Welcome Back'}
             </h2>
             <p className="text-slate-500 mt-1">
-              {mode === 'signup' ? 'Join the EMD management platform' : 'Enter your credentials to continue'}
+              {mode === 'signup' ? 'Join the EMD management platform' : mode === 'forgot-password' ? 'Enter your email to receive a reset link' : 'Enter your credentials to continue'}
             </p>
           </div>
 
@@ -431,109 +401,40 @@ const AuthPage: React.FC<{
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-            <Input 
-              label="Password" 
-              type="password" 
-              placeholder="••••••••" 
-              required 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            {mode !== 'forgot-password' && (
+              <Input 
+                label="Password" 
+                type="password" 
+                placeholder="••••••••" 
+                required 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            )}
 
             {error && <p className="text-sm text-rose-500 bg-rose-50 p-3 rounded-lg">{error}</p>}
+            {message && <p className="text-sm text-emerald-600 bg-emerald-50 p-3 rounded-lg">{message}</p>}
 
             <Button type="submit" loading={loading} className="w-full h-12 mt-4">
-              {mode === 'signup' ? 'Create Account' : 'Send OTP'}
+              {mode === 'signup' ? 'Create Account' : mode === 'forgot-password' ? 'Send Reset Link' : 'Login'}
             </Button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-            <button onClick={onToggle} className="text-indigo-600 font-medium hover:underline">
+          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">
+            {mode === 'login' && (
+              <button onClick={() => onToggle('forgot-password')} type="button" className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">
+                Forgot Password?
+              </button>
+            )}
+            <button onClick={() => onToggle(mode === 'signup' ? 'login' : 'signup')} type="button" className="text-indigo-600 font-medium hover:underline">
               {mode === 'signup' ? 'Already have an account? Login' : "Don't have an account? Sign up"}
             </button>
+            {mode === 'forgot-password' && (
+              <button onClick={() => onToggle('login')} type="button" className="text-sm text-slate-500 hover:text-indigo-600 transition-colors mt-2">
+                Back to Login
+              </button>
+            )}
           </div>
-        </Card>
-      </motion.div>
-    </div>
-  );
-};
-
-const OTPVerificationPage: React.FC<{ 
-  email: string; 
-  onVerified: () => void; 
-  onBack: () => void;
-}> = ({ email, onVerified, onBack }) => {
-  const [otp, setOtp] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const otpDoc = await getDoc(doc(db, 'otps', email));
-      if (!otpDoc.exists() || !otpDoc.data().otp) {
-        throw new Error('OTP expired or not found. Please request a new one.');
-      }
-
-      const data = otpDoc.data();
-      if (data.otp !== otp) {
-        throw new Error('Invalid verification code.');
-      }
-
-      if (data.expiresAt.toDate() < new Date()) {
-        throw new Error('Verification code has expired.');
-      }
-
-      await setDoc(doc(db, 'otps', email), {}); // Clear OTP
-      onVerified();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md w-full">
-        <Card className="p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <ShieldCheck className="w-8 h-8 text-indigo-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900">Verify Identity</h2>
-            <p className="text-slate-500 mt-1">We've sent a 6-digit code to</p>
-            <p className="font-bold text-indigo-600 mt-1">{email}</p>
-          </div>
-
-          <form onSubmit={handleVerifyOtp} className="space-y-6">
-            <Input 
-              label="Verification Code" 
-              placeholder="000000" 
-              required 
-              maxLength={6}
-              className="text-center text-2xl tracking-[0.5em] font-mono"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-            />
-
-            {error && <p className="text-sm text-rose-500 bg-rose-50 p-3 rounded-lg">{error}</p>}
-
-            <Button type="submit" loading={loading} className="w-full h-12">
-              Verify & Dashboard
-            </Button>
-            
-            <button 
-              type="button" 
-              onClick={onBack}
-              className="w-full text-sm text-slate-400 hover:text-indigo-600 transition-colors"
-            >
-              ← Back to Login
-            </button>
-          </form>
         </Card>
       </motion.div>
     </div>
@@ -567,39 +468,10 @@ const PendingApproval: React.FC = () => (
 
 export default function App() {
   const { user, profile, loading, isAuthReady } = useAuth();
-  const [authMode, setAuthMode] = useState<'welcome' | 'login' | 'signup'>('welcome');
+  const [authMode, setAuthMode] = useState<'welcome' | 'login' | 'signup' | 'forgot-password'>('welcome');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
-
-  // OTP Verification State (Persist in localStorage to survive refresh)
-  const [otpVerified, setOtpVerified] = useState(() => {
-    return localStorage.getItem('otp_verified') === 'true';
-  });
-  const [verifyingEmail, setVerifyingEmail] = useState<string | null>(() => {
-    return localStorage.getItem('verifying_email');
-  });
-
-  const handleOtpVerified = () => {
-    setOtpVerified(true);
-    localStorage.setItem('otp_verified', 'true');
-  };
-
-  const handleOtpSent = (email: string) => {
-    setVerifyingEmail(email);
-    localStorage.setItem('verifying_email', email);
-  };
-
-  useEffect(() => {
-    // ONLY clear states if there is absolutely no user session
-    // and we haven't just started a verification flow
-    if (!user && !localStorage.getItem('verifying_email')) {
-      setOtpVerified(false);
-      setVerifyingEmail(null);
-      localStorage.removeItem('otp_verified');
-      localStorage.removeItem('verifying_email');
-    }
-  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -614,12 +486,6 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-  useEffect(() => {
-    if (user && localStorage.getItem('otp_verified') === 'true') {
-      setOtpVerified(true);
-    }
-  }, [user]);
-
   if (!isAuthReady || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -631,34 +497,12 @@ export default function App() {
     );
   }
 
-  // Auth flow logic
-  const isVerifying = user && !otpVerified && (verifyingEmail || localStorage.getItem('verifying_email'));
-
-  if (!user || (!otpVerified && !isVerifying)) {
-    if (authMode === 'welcome' && !user) return <WelcomeScreen onLogin={() => setAuthMode('login')} onCreate={() => setAuthMode('signup')} />;
+  if (!user) {
+    if (authMode === 'welcome') return <WelcomeScreen onLogin={() => setAuthMode('login')} onCreate={() => setAuthMode('signup')} />;
     return (
       <AuthPage 
-        mode={authMode === 'login' ? 'login' : 'signup'} 
-        onToggle={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} 
-        onOtpSent={handleOtpSent}
-      />
-    );
-  }
-
-  // If user is logged in but hasn't verified OTP
-  if (!otpVerified) {
-    const displayEmail = verifyingEmail || localStorage.getItem('verifying_email') || user.email || '';
-    return (
-      <OTPVerificationPage 
-        email={displayEmail} 
-        onVerified={handleOtpVerified} 
-        onBack={() => {
-          setVerifyingEmail(null);
-          setOtpVerified(false);
-          localStorage.removeItem('verifying_email');
-          localStorage.removeItem('otp_verified');
-          signOut(auth);
-        }}
+        mode={authMode === 'welcome' ? 'login' : authMode} 
+        onToggle={(m) => setAuthMode(m)} 
       />
     );
   }
