@@ -43,6 +43,9 @@ export interface EMDRecord {
   status: EMDStatus;
   withdrawalDate?: string;
   returnMethod?: string;
+  withdrawalNotes?: string;
+  ownerNotes?: string;
+  withdrawnByName?: string;
   createdAt: any;
   createdBy: string;
 }
