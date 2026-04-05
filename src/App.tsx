@@ -156,6 +156,8 @@ const RecordDetailsModal: React.FC<{ record: EMDRecord; onClose: () => void }> =
                 <div className="grid grid-cols-2 gap-4 mt-1">
                   <div><span className="text-slate-500">Withdrawal Date:</span> <p className="font-bold text-rose-600">{record.withdrawalDate}</p></div>
                   {record.returnMethod && <div><span className="text-slate-500">Return Method:</span> <p className="font-bold text-rose-600">{record.returnMethod}</p></div>}
+                  {record.withdrawalNotes && <div className="col-span-full mt-2"><span className="text-slate-500">Requester Notes:</span> <p className="text-sm font-medium text-slate-800 whitespace-pre-wrap">{record.withdrawalNotes}</p></div>}
+                  {record.ownerNotes && <div className="col-span-full mt-1"><span className="text-slate-500">Owner Notes:</span> <p className="text-sm font-medium text-slate-800 whitespace-pre-wrap">{record.ownerNotes}</p></div>}
                 </div>
               </div>
             )}
@@ -1440,6 +1442,8 @@ function WithdrawalApprovalsView() {
           status: 'Withdrawn',
           withdrawalDate: request.withdrawalDate,
           returnMethod: request.returnMethod,
+          withdrawalNotes: request.notes || null,
+          ownerNotes: ownerNotes || null,
           updatedAt: serverTimestamp()
         });
       }
@@ -1530,7 +1534,7 @@ function WithdrawalApprovalsView() {
   );
 }
 
-function WithdrawalRequestRow({ request, onAction }: { request: WithdrawalRequest, onAction: any }) {
+function WithdrawalRequestRow({ request, onAction }: { key?: string | number; request: WithdrawalRequest, onAction: any }) {
   const [ownerNotes, setOwnerNotes] = useState('');
   return (
     <tr className="group hover:bg-slate-50 transition-colors">
