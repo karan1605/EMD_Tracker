@@ -90,14 +90,14 @@ service cloud.firestore {
 
     match /emd_records/{emdId} {
       allow read: if isApproved();
-      allow create: if isApproved() && hasPermission('Only Add') &&
+      allow create: if isApproved() && (hasPermission('Only Add') || hasPermission('Add/Withdraw Only')) &&
                       hasOnlyAllowedFields(['emdType', 'emdTypeOther', 'emdNumber', 'emdAmount', 'bidNumber', 'bidStartDate', 'bidEndDate', 'department', 'depositLocation', 'deliveryMethod', 'deliveryDate', 'trackingId', 'courierReceiptPhoto', 'company', 'companyOther', 'bank', 'bankOther', 'maturityDate', 'notes', 'photos', 'status', 'createdAt', 'createdBy']);
-      allow update: if isApproved() && hasPermission('All Access');
+      allow update: if isApproved() && (hasPermission('All Access') || hasPermission('Add/Withdraw Only'));
     }
 
     match /withdrawal_requests/{requestId} {
       allow read: if isApproved();
-      allow create: if isApproved() && hasPermission('All Access');
+      allow create: if isApproved() && (hasPermission('All Access') || hasPermission('Add/Withdraw Only'));
       allow update: if isAdmin();
     }
 
