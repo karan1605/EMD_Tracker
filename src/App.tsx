@@ -559,6 +559,7 @@ export default function App() {
               {profile?.role === 'Owner' && (
                 <div className="pt-6 mt-6 border-t border-slate-100">
                   <p className="px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Admin Panel</p>
+                  <SidebarItem icon={<CheckCircle2 className="w-5 h-5" />} label="Approvals" active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} />
                   <SidebarItem icon={<Users className="w-5 h-5" />} label="User Management" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
                   <SidebarItem icon={<FileSpreadsheet className="w-5 h-5" />} label="Reports" active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
                 </div>
@@ -625,6 +626,7 @@ export default function App() {
               {activeTab === 'notifications' && <NotificationsView />}
               {activeTab === 'users' && <UserManagementView />}
               {activeTab === 'reports' && <ReportsView />}
+              {activeTab === 'approvals' && <WithdrawalApprovalsView />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -1154,12 +1156,14 @@ function RecordsView() {
 }
 
 function WithdrawView() {
+  const { user, profile } = useAuth();
   const [emdNumber, setEmdNumber] = useState('');
   const [record, setRecord] = useState<EMDRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [withdrawalDate, setWithdrawalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [returnMethod, setReturnMethod] = useState('Bank Transfer');
+  const [notes, setNotes] = useState('');
 
   const handleSearch = async () => {
     setLoading(true);
@@ -1186,21 +1190,30 @@ function WithdrawView() {
     }
   };
 
-  const handleWithdraw = async () => {
-    if (!record) return;
+  const handleWithdrawRequest = async () => {
+    if (!record || !user) return;
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'emd_records', record.id), {
-        status: 'Withdrawn',
+      // Create simple withdrawal_request doc
+      await addDoc(collection(db, 'withdrawal_requests'), {
+        emdId: record.id,
+        emdNumber: record.emdNumber,
         withdrawalDate,
         returnMethod,
-        updatedAt: serverTimestamp()
+        status: 'Pending',
+        requestedBy: user.uid,
+        requestedByName: profile?.fullName || user.email,
+        notes,
+        createdAt: serverTimestamp()
       });
-      alert('EMD Withdrawn Successfully!');
+      alert('Withdrawal Request Submitted Successfully.
+Wait for Owner approval.');
       setRecord(null);
       setEmdNumber('');
-    } catch (err) {
+      setNotes('');
+    } catch (err: any) {
       console.error(err);
+      alert('Failed to request withdrawal: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1249,12 +1262,19 @@ function WithdrawView() {
                 >
                   <option value="Bank Transfer">Bank Transfer</option>
                   <option value="Cheque">Cheque</option>
-                  <option value="Physical DD Return">Physical DD Return</option>
-                  <option value="Other">Other</option>
+                  <option value="Cash">Cash</option>
                 </select>
               </div>
+              <TextArea
+                label="Notes / Reason for Withdrawal"
+                placeholder="Brief reason or extra details..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+              <Button loading={loading} onClick={handleWithdrawRequest} className="w-full">
+                Submit Withdrawal Request
+              </Button>
             </div>
-            <Button className="w-full h-12" loading={loading} onClick={handleWithdraw}>Confirm Withdrawal</Button>
           </Card>
         </motion.div>
       )}
@@ -1398,6 +1418,144 @@ function UserManagementView() {
         </table>
       </div>
     </Card>
+  );
+}
+
+function WithdrawalApprovalsView() {
+  const [requests, setRequests] = useState<WithdrawalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'withdrawal_requests'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithdrawalRequest)));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAction = async (request: WithdrawalRequest, newStatus: 'Approved' | 'Rejected', ownerNotes: string) => {
+    try {
+      if (newStatus === 'Approved') {
+        await updateDoc(doc(db, 'emd_records', request.emdId), {
+          status: 'Withdrawn',
+          withdrawalDate: request.withdrawalDate,
+          returnMethod: request.returnMethod,
+          updatedAt: serverTimestamp()
+        });
+      }
+      
+      await updateDoc(doc(db, 'withdrawal_requests', request.id), {
+        status: newStatus,
+        ownerNotes,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update status");
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading requests...</div>;
+
+  const pendingRequests = requests.filter(r => r.status === 'Pending');
+  const pastRequests = requests.filter(r => r.status !== 'Pending');
+
+  return (
+    <div className="space-y-8">
+      <Card>
+        <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+          <Clock className="w-6 h-6 text-amber-500" />
+          Pending Withdrawal Approvals
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left border-b border-slate-100">
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">EMD details</th>
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">Requested By</th>
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">Notes</th>
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {pendingRequests.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-slate-500">No pending requests.</td>
+                </tr>
+              )}
+              {pendingRequests.map(req => (
+                <WithdrawalRequestRow key={req.id} request={req} onAction={handleAction} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+          <History className="w-6 h-6 text-slate-500" />
+          Approval History
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <tbody className="divide-y divide-slate-50">
+              {pastRequests.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="py-8 text-center text-slate-500">No history found.</td>
+                </tr>
+              )}
+              {pastRequests.map(req => (
+                <tr key={req.id} className="group hover:bg-slate-50 transition-colors">
+                  <td className="py-4">
+                    <p className="font-bold text-slate-900">{req.emdNumber}</p>
+                    <p className="text-xs text-slate-500">Requested by: {req.requestedByName}</p>
+                  </td>
+                  <td className="py-4">
+                    <span className={cn("px-2 py-1 rounded-lg text-xs font-bold inline-block",
+                      req.status === 'Approved' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                    )}>
+                      {req.status}
+                    </span>
+                  </td>
+                  <td className="py-4 text-sm text-slate-600 max-w-[200px] truncate">
+                    {req.ownerNotes || '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function WithdrawalRequestRow({ request, onAction }: { request: WithdrawalRequest, onAction: any }) {
+  const [ownerNotes, setOwnerNotes] = useState('');
+  return (
+    <tr className="group hover:bg-slate-50 transition-colors">
+      <td className="py-4">
+        <p className="font-bold text-slate-900">{request.emdNumber}</p>
+        <p className="text-xs text-slate-500">For {request.withdrawalDate} via {request.returnMethod}</p>
+      </td>
+      <td className="py-4 text-slate-600 font-bold text-sm">{request.requestedByName}</td>
+      <td className="py-4 text-slate-600 text-sm max-w-xs break-words">
+        {request.notes || '-'}
+      </td>
+      <td className="py-4 text-right space-y-2 min-w-[200px]">
+        <Input 
+          placeholder="Owner notes (optional)" 
+          className="text-xs mb-2" 
+          value={ownerNotes}
+          onChange={(e) => setOwnerNotes(e.target.value)}
+        />
+        <div className="flex gap-2 justify-end">
+          <Button size="sm" onClick={() => onAction(request, 'Approved', ownerNotes)} className="bg-emerald-600 border-emerald-600 hover:bg-emerald-700 text-white">Approve</Button>
+          <Button size="sm" onClick={() => onAction(request, 'Rejected', ownerNotes)} variant="danger">Reject</Button>
+        </div>
+      </td>
+    </tr>
   );
 }
 

@@ -56,6 +56,8 @@ export interface WithdrawalRequest {
   status: 'Pending' | 'Approved' | 'Rejected';
   requestedBy: string;
   requestedByName: string;
+  notes?: string;
+  ownerNotes?: string;
   createdAt: any;
 }
 
