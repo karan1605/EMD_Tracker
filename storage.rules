@@ -2,33 +2,25 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Helper: Check if user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    // Helper: Check if user is approved in Firestore
-    function isApproved() {
+    // Direct check for your admin emails (very reliable)
+    function isAdminByEmail() {
       return isAuthenticated() && 
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'Approved';
-    }
-    
-    // Helper: Check if user is Owner
-    function isOwner() {
-      return isAuthenticated() && 
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'Owner';
+        (request.auth.token.email == "karan.gupta.4977@gmail.com" || 
+         request.auth.token.email == "demo@emdtracker.com");
     }
 
     match /emd/{userId}/{allPaths=**} {
-      // Allow read access to all authenticated users (so they can see documents in records)
-      // Or restrict to only Approved users
-      allow read: if isApproved();
+      // Allow read access to all authenticated users
+      allow read: if isAuthenticated();
       
-      // Allow write access only to the folder owner, and only if they are approved
-      allow write: if isApproved() && request.auth.uid == userId;
+      // Allow write access if you are the folder owner OR an admin by email
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdminByEmail());
     }
     
-    // Fallback: Deny everything else
     match /{allPaths=**} {
       allow read, write: if false;
     }
