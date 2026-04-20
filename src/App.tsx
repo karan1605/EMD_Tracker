@@ -496,6 +496,13 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  const handleNavClick = (tab: string) => {
+    setActiveTab(tab);
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  };
+
   if (!isAuthReady || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -553,19 +560,19 @@ export default function App() {
             </div>
 
             <div className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
-              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />}
-              <SidebarItem icon={<PlusCircle className="w-5 h-5" />} label="Add EMD" active={activeTab === 'add-emd'} onClick={() => setActiveTab('add-emd')} />
-              <SidebarItem icon={<ArrowDownLeft className="w-5 h-5" />} label="Withdraw EMD" active={activeTab === 'withdraw'} onClick={() => setActiveTab('withdraw')} />
-              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<History className="w-5 h-5" />} label="Records" active={activeTab === 'records'} onClick={() => setActiveTab('records')} />}
-              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<AlertTriangle className="w-5 h-5" />} label="Risk Monitor" active={activeTab === 'risk'} onClick={() => setActiveTab('risk')} />}
-              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<Bell className="w-5 h-5" />} label="Notifications" active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} badge={unreadCount} />}
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => handleNavClick('dashboard')} />}
+              <SidebarItem icon={<PlusCircle className="w-5 h-5" />} label="Add EMD" active={activeTab === 'add-emd'} onClick={() => handleNavClick('add-emd')} />
+              <SidebarItem icon={<ArrowDownLeft className="w-5 h-5" />} label="Withdraw EMD" active={activeTab === 'withdraw'} onClick={() => handleNavClick('withdraw')} />
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<History className="w-5 h-5" />} label="Records" active={activeTab === 'records'} onClick={() => handleNavClick('records')} />}
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<AlertTriangle className="w-5 h-5" />} label="Risk Monitor" active={activeTab === 'risk'} onClick={() => handleNavClick('risk')} />}
+              {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<Bell className="w-5 h-5" />} label="Notifications" active={activeTab === 'notifications'} onClick={() => handleNavClick('notifications')} badge={unreadCount} />}
               
               {profile?.role === 'Owner' && (
                 <div className="pt-6 mt-6 border-t border-slate-100">
                   <p className="px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Admin Panel</p>
-                  <SidebarItem icon={<CheckCircle2 className="w-5 h-5" />} label="Approvals" active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} />
-                  <SidebarItem icon={<Users className="w-5 h-5" />} label="User Management" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
-                  <SidebarItem icon={<FileSpreadsheet className="w-5 h-5" />} label="Reports" active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
+                  <SidebarItem icon={<CheckCircle2 className="w-5 h-5" />} label="Approvals" active={activeTab === 'approvals'} onClick={() => handleNavClick('approvals')} />
+                  <SidebarItem icon={<Users className="w-5 h-5" />} label="User Management" active={activeTab === 'users'} onClick={() => handleNavClick('users')} />
+                  <SidebarItem icon={<FileSpreadsheet className="w-5 h-5" />} label="Reports" active={activeTab === 'reports'} onClick={() => handleNavClick('reports')} />
                 </div>
               )}
             </div>
