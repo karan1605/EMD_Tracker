@@ -256,6 +256,8 @@ const StatCard: React.FC<{
     emerald: 'bg-emerald-50 text-emerald-600',
     amber: 'bg-amber-50 text-amber-600',
     rose: 'bg-rose-50 text-rose-600',
+    violet: 'bg-violet-50 text-violet-600',
+    sky: 'bg-sky-50 text-sky-600',
   };
 
   return (
@@ -659,6 +661,8 @@ function DashboardView({ onViewAll }: { onViewAll: () => void }) {
     totalAmount: records.reduce((acc, r) => acc + (r.status === 'Active' ? r.emdAmount : 0), 0),
     fdAmount: records.reduce((acc, r) => acc + (r.emdType === 'FD' && r.status === 'Active' ? r.emdAmount : 0), 0),
     bgAmount: records.reduce((acc, r) => acc + (r.emdType === 'BG' && r.status === 'Active' ? r.emdAmount : 0), 0),
+    ddAmount: records.reduce((acc, r) => acc + (r.emdType === 'DD' && r.status === 'Active' ? r.emdAmount : 0), 0),
+    otherAmount: records.reduce((acc, r) => acc + (r.emdType === 'Other' && r.status === 'Active' ? r.emdAmount : 0), 0),
   };
 
   const recentRecords = [...records].sort((a, b) => {
@@ -675,11 +679,13 @@ function DashboardView({ onViewAll }: { onViewAll: () => void }) {
   return (
     <div className="space-y-8">
       {selectedRecord && <RecordDetailsModal record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
         <StatCard label="Total Active EMD" value={stats.totalActive} icon={<FileText className="w-6 h-6" />} color="indigo" />
         <StatCard label="Total EMD Amount" value={`₹${stats.totalAmount.toLocaleString()}`} icon={<Landmark className="w-6 h-6" />} color="emerald" />
         <StatCard label="FD Amount" value={`₹${stats.fdAmount.toLocaleString()}`} icon={<Building2 className="w-6 h-6" />} color="amber" />
         <StatCard label="BG Amount" value={`₹${stats.bgAmount.toLocaleString()}`} icon={<ShieldCheck className="w-6 h-6" />} color="rose" />
+        <StatCard label="DD Amount" value={`₹${stats.ddAmount.toLocaleString()}`} icon={<FileSpreadsheet className="w-6 h-6" />} color="violet" />
+        <StatCard label="Other Amount" value={`₹${stats.otherAmount.toLocaleString()}`} icon={<PlusCircle className="w-6 h-6" />} color="sky" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
