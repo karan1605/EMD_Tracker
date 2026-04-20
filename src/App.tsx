@@ -474,7 +474,7 @@ export default function App() {
   const { user, profile, loading, isAuthReady } = useAuth();
   const [authMode, setAuthMode] = useState<'welcome' | 'login' | 'signup' | 'forgot-password'>('welcome');
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
