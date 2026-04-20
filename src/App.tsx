@@ -56,7 +56,7 @@ import {
   getDocs,
   getDoc
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
 import { AuthProvider, useAuth } from './AuthContext';
 import { Button, Input, Card, FileUpload, TextArea, cn } from './components/UI';
@@ -648,13 +648,7 @@ function DashboardView({ onViewAll }: { onViewAll: () => void }) {
     const q = query(collection(db, 'emd_records'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EMDRecord));
-      // Sort: Active first, then by createdAt desc
-      const sorted = [...allRecords].sort((a, b) => {
-        if (a.status === 'Active' && b.status !== 'Active') return -1;
-        if (a.status !== 'Active' && b.status === 'Active') return 1;
-        return 0; // Maintain createdAt desc order within groups
-      });
-      setRecords(sorted.slice(0, 5));
+      setRecords(allRecords);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -667,23 +661,34 @@ function DashboardView({ onViewAll }: { onViewAll: () => void }) {
     bgAmount: records.reduce((acc, r) => acc + (r.emdType === 'BG' && r.status === 'Active' ? r.emdAmount : 0), 0),
   };
 
+  const recentRecords = [...records].sort((a, b) => {
+    if (a.status === 'Active' && b.status !== 'Active') return -1;
+    if (a.status !== 'Active' && b.status === 'Active') return 1;
+    return 0; // Maintain createdAt desc order within groups
+  });
+
+  const upcomingMaturities = records
+    .filter(r => r.status === 'Active' && r.maturityDate)
+    .sort((a, b) => new Date(a.maturityDate!).getTime() - new Date(b.maturityDate!).getTime())
+    .filter(r => differenceInDays(new Date(r.maturityDate!), new Date()) >= 0);
+
   return (
     <div className="space-y-8">
       {selectedRecord && <RecordDetailsModal record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Active EMD" value={stats.totalActive} icon={<FileText className="w-6 h-6" />} color="indigo" trend="+12%" />
+        <StatCard label="Total Active EMD" value={stats.totalActive} icon={<FileText className="w-6 h-6" />} color="indigo" />
         <StatCard label="Total EMD Amount" value={`₹${stats.totalAmount.toLocaleString()}`} icon={<Landmark className="w-6 h-6" />} color="emerald" />
         <StatCard label="FD Amount" value={`₹${stats.fdAmount.toLocaleString()}`} icon={<Building2 className="w-6 h-6" />} color="amber" />
         <StatCard label="BG Amount" value={`₹${stats.bgAmount.toLocaleString()}`} icon={<ShieldCheck className="w-6 h-6" />} color="rose" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 flex flex-col">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-slate-900">Recent EMD Entries</h3>
-            <Button variant="ghost" size="sm" onClick={onViewAll}>View All</Button>
+            <h3 className="text-lg font-bold text-slate-900">EMD Overview</h3>
+            <Button variant="ghost" size="sm" onClick={onViewAll}>View All Records</Button>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[600px] pr-2 scrollbar-thin scrollbar-thumb-slate-200">
             <table className="w-full">
               <thead>
                 <tr className="text-left border-b border-slate-100">
@@ -695,7 +700,7 @@ function DashboardView({ onViewAll }: { onViewAll: () => void }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {records.map((record) => (
+                {recentRecords.map((record) => (
                   <tr key={record.id} className="group hover:bg-slate-50 transition-colors">
                     <td className="py-4 font-medium text-slate-900">{record.emdNumber}</td>
                     <td className="py-4 text-slate-600">{record.department}</td>
@@ -720,10 +725,10 @@ function DashboardView({ onViewAll }: { onViewAll: () => void }) {
           </div>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <h3 className="text-lg font-bold text-slate-900 mb-6">Upcoming Maturities</h3>
-          <div className="space-y-4">
-            {records.filter(r => r.maturityDate).map((record) => (
+          <div className="space-y-4 overflow-y-auto max-h-[600px] pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+            {upcomingMaturities.length > 0 ? upcomingMaturities.map((record) => (
               <div key={record.id} className="flex items-center gap-4 p-3 rounded-xl border border-slate-50 hover:border-indigo-100 transition-all">
                 <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600">
                   <Calendar className="w-5 h-5" />
@@ -738,7 +743,12 @@ function DashboardView({ onViewAll }: { onViewAll: () => void }) {
                   </p>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-center py-8 text-slate-400">
+                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                <p className="text-sm">No upcoming maturities</p>
+              </div>
+            )}
           </div>
         </Card>
       </div>
@@ -758,22 +768,49 @@ function AddEMDView() {
   });
 
   const handleFileUpload = async (file: File, field: 'photos' | 'courierReceiptPhoto') => {
-    if (!user) return;
+    if (!user) {
+      console.warn("Upload aborted: No authenticated user.");
+      return;
+    }
+    
+    console.log(`Starting upload for ${field}:`, file.name, `(${file.size} bytes)`);
     setUploading(field);
+    
     try {
       const storageRef = ref(storage, `emd/${user.uid}/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snapshot.ref);
+      const uploadTask = uploadBytesResumable(storageRef, file);
       
-      if (field === 'photos') {
-        setFormData(prev => ({ ...prev, photos: [...(prev.photos || []), url] }));
-      } else {
-        setFormData(prev => ({ ...prev, [field]: url }));
-      }
+      // Monitor upload progress
+      return new Promise<void>((resolve, reject) => {
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            console.log(`Upload progress for ${field}: ${progress.toFixed(2)}%`);
+          }, 
+          (error) => {
+            console.error(`Upload error for ${field}:`, error);
+            alert(`Upload failed: ${error.message}. Please check your internet or CORS settings.`);
+            setUploading(null);
+            reject(error);
+          }, 
+          async () => {
+            console.log(`Upload successful for ${field}. Fetching download URL...`);
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log(`Download URL received for ${field}:`, url);
+            
+            if (field === 'photos') {
+              setFormData(prev => ({ ...prev, photos: [...(prev.photos || []), url] }));
+            } else {
+              setFormData(prev => ({ ...prev, [field]: url }));
+            }
+            setUploading(null);
+            resolve();
+          }
+        );
+      });
     } catch (err) {
-      console.error("Upload failed:", err);
-      alert("Failed to upload image. Please try again.");
-    } finally {
+      console.error("Critical upload failure:", err);
+      alert("A critical error occurred during upload initialization.");
       setUploading(null);
     }
   };
