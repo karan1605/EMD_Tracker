@@ -1,6 +1,6 @@
 export type UserRole = 'Owner' | 'Employee';
 export type UserStatus = 'Pending' | 'Approved' | 'Rejected';
-export type UserPermissions = 'Only View' | 'Only Add' | 'All Access';
+export type UserPermissions = 'Only View' | 'Add/Withdraw Only' | 'All Access';
 
 export interface UserProfile {
   uid: string;
@@ -64,11 +64,25 @@ export interface WithdrawalRequest {
   createdAt: any;
 }
 
+export interface AmendmentRequest {
+  id: string;
+  emdId: string;
+  emdNumber: string;
+  originalData: Partial<EMDRecord>;
+  newData: Partial<EMDRecord>;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  requestedBy: string;
+  requestedByName: string;
+  reason?: string;
+  ownerNotes?: string;
+  createdAt: any;
+}
+
 export interface Notification {
   id: string;
   title: string;
   message: string;
-  type: 'Maturity' | 'BidEnd' | 'Withdrawal' | 'Approval';
+  type: 'Maturity' | 'BidEnd' | 'Withdrawal' | 'Approval' | 'Amendment';
   read: boolean;
   targetUser: string;
   createdAt: any;

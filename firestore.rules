@@ -101,6 +101,12 @@ service cloud.firestore {
       allow update: if isAdmin();
     }
 
+    match /amendment_requests/{requestId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && (hasPermission('All Access') || hasPermission('Add/Withdraw Only'));
+      allow update: if isAdmin();
+    }
+
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.targetUser || isAdmin());
       allow create: if isAdmin() || isApproved(); // System or users can create notifications

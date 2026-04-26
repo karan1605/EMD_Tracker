@@ -64,6 +64,7 @@ import {
   EMDRecord, 
   UserProfile, 
   WithdrawalRequest, 
+  AmendmentRequest,
   Notification, 
   EMDType, 
   DepositLocation, 
@@ -560,6 +561,7 @@ export default function App() {
             </div>
 
             <div className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
+              <SidebarItem icon={<Search className="w-5 h-5" />} label="Search & Edit" active={activeTab === 'search-edit'} onClick={() => handleNavClick('search-edit')} />
               {profile?.permissions !== 'Add/Withdraw Only' && <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => handleNavClick('dashboard')} />}
               <SidebarItem icon={<PlusCircle className="w-5 h-5" />} label="Add EMD" active={activeTab === 'add-emd'} onClick={() => handleNavClick('add-emd')} />
               <SidebarItem icon={<ArrowDownLeft className="w-5 h-5" />} label="Withdraw EMD" active={activeTab === 'withdraw'} onClick={() => handleNavClick('withdraw')} />
@@ -633,11 +635,19 @@ export default function App() {
               {activeTab === 'add-emd' && <AddEMDView />}
               {activeTab === 'records' && <RecordsView />}
               {activeTab === 'withdraw' && <WithdrawView />}
+              {activeTab === 'search-edit' && <SearchEditView />}
               {activeTab === 'risk' && <RiskMonitorView />}
               {activeTab === 'notifications' && <NotificationsView />}
               {activeTab === 'users' && <UserManagementView />}
               {activeTab === 'reports' && <ReportsView />}
-              {activeTab === 'approvals' && <WithdrawalApprovalsView />}
+              {activeTab === 'approvals' && (
+                <div className="space-y-12">
+                  <WithdrawalApprovalsView />
+                  <div className="border-t border-slate-200 pt-12">
+                    <AmendmentApprovalsView />
+                  </div>
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -1769,5 +1779,358 @@ function NotificationsView() {
         </div>
       )}
     </div>
+  );
+}
+
+function SearchEditView() {
+  const { user, profile } = useAuth();
+  const [emdNumber, setEmdNumber] = useState('');
+  const [record, setRecord] = useState<EMDRecord | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<Partial<EMDRecord>>({});
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSearch = async () => {
+    if (!emdNumber) return;
+    setLoading(true);
+    setError('');
+    try {
+      const q = query(collection(db, 'emd_records'), where('emdNumber', '==', emdNumber), limit(1));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) {
+        setError('EMD Record not found.');
+        setRecord(null);
+      } else {
+        const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as EMDRecord;
+        setRecord(data);
+        setFormData(data);
+      }
+    } catch (err) {
+      setError('Error searching for record.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitAmendment = async () => {
+    if (!record || !user) return;
+    if (!reason) {
+      alert("Please provide a reason for the amendment.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await addDoc(collection(db, 'amendment_requests'), {
+        emdId: record.id,
+        emdNumber: record.emdNumber,
+        originalData: record,
+        newData: formData,
+        status: 'Pending',
+        requestedBy: user.uid,
+        requestedByName: profile?.fullName || user.email,
+        reason,
+        createdAt: serverTimestamp()
+      });
+      alert('Amendment Request Submitted for Approval.');
+      setIsEditing(false);
+      setRecord(null);
+      setEmdNumber('');
+      setReason('');
+    } catch (err: any) {
+      alert('Failed to submit amendment: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      {!isEditing ? (
+        <>
+          <Card>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                <Search className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Search EMD for Amendment</h3>
+                <p className="text-sm text-slate-500">Find a record to suggest corrections or updates.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Input 
+                placeholder="Enter EMD Number..." 
+                value={emdNumber}
+                onChange={(e) => setEmdNumber(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              />
+              <Button loading={loading} onClick={handleSearch}>Search Record</Button>
+            </div>
+            {error && <p className="text-sm text-rose-500 mt-3 bg-rose-50 p-3 rounded-lg">{error}</p>}
+          </Card>
+
+          {record && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="space-y-6">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-bold text-slate-900 capitalize">{record.emdType} - {record.emdNumber}</h4>
+                      <p className="text-sm text-slate-500">{record.department}</p>
+                    </div>
+                  </div>
+                  <Button onClick={() => setIsEditing(true)} size="sm">
+                    Initiate Edit
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-slate-50 p-6 rounded-2xl">
+                  <div><span className="text-slate-500 block mb-1">Amount</span><span className="font-bold text-slate-900">₹{record.emdAmount.toLocaleString()}</span></div>
+                  <div><span className="text-slate-500 block mb-1">Bank</span><span className="font-bold text-slate-900">{record.bank}</span></div>
+                  <div><span className="text-slate-500 block mb-1">Company</span><span className="font-bold text-slate-900">{record.company}</span></div>
+                  <div><span className="text-slate-500 block mb-1">Status</span><span className="font-bold text-indigo-600">{record.status}</span></div>
+                </div>
+
+                {record.status === 'Withdrawn' && (
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
+                    <AlertTriangle className="w-5 h-5" />
+                    <p className="text-xs font-medium">This record is already withdrawn. Amendments may still be requested for historical correction.</p>
+                  </div>
+                )}
+              </Card>
+            </motion.div>
+          )}
+        </>
+      ) : (
+        <Card className="p-0 overflow-hidden border-indigo-200">
+          <div className="bg-indigo-600 p-8 text-white flex justify-between items-center">
+            <div>
+              <h3 className="text-2xl font-bold">Amend EMD Record</h3>
+              <p className="text-indigo-100 mt-1">Suggest changes for Record {record?.emdNumber}</p>
+            </div>
+            <Button variant="ghost" className="text-white hover:bg-white/10" onClick={() => setIsEditing(false)}>
+              <X className="w-6 h-6" />
+            </Button>
+          </div>
+          <div className="p-8 space-y-8">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Input label="EMD Amount" type="number" value={formData.emdAmount} onChange={(e) => setFormData({...formData, emdAmount: Number(e.target.value)})} />
+                <Input label="Department" value={formData.department} onChange={(e) => setFormData({...formData, department: e.target.value})} />
+                <Input label="Bid Number" value={formData.bidNumber} onChange={(e) => setFormData({...formData, bidNumber: e.target.value})} />
+                <Input label="Bank" value={formData.bank} onChange={(e) => setFormData({...formData, bank: e.target.value})} />
+                <Input label="Company" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} />
+                <Input label="Maturity Date" type="date" value={formData.maturityDate} onChange={(e) => setFormData({...formData, maturityDate: e.target.value})} />
+             </div>
+             
+             <div className="space-y-4 pt-6 border-t border-slate-100">
+                <TextArea 
+                  label="Reason for Amendment" 
+                  required 
+                  value={reason} 
+                  onChange={(e) => setReason(e.target.value)} 
+                  placeholder="Explain why these changes are needed (e.g., Typing error, Data update from department)..." 
+                  className="min-h-[120px]"
+                />
+                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    <strong>Note:</strong> Your proposal will be sent to the administrator for review. Changes will only be applied to the live record once approved.
+                  </p>
+                </div>
+             </div>
+
+             <div className="pt-8 border-t border-slate-100 flex justify-end gap-4">
+                <Button variant="outline" size="lg" onClick={() => setIsEditing(false)}>Cancel Edit</Button>
+                <Button loading={submitting} size="lg" onClick={handleSubmitAmendment}>Submit Amendment Proposal</Button>
+             </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function AmendmentApprovalsView() {
+  const [requests, setRequests] = useState<AmendmentRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'amendment_requests'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AmendmentRequest)));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAction = async (request: AmendmentRequest, newStatus: 'Approved' | 'Rejected', ownerNotes: string) => {
+    try {
+      if (newStatus === 'Approved') {
+        const { id, createdAt, createdBy, ...updateData } = request.newData as any;
+        await updateDoc(doc(db, 'emd_records', request.emdId), {
+          ...updateData,
+          updatedAt: serverTimestamp(),
+          lastAmendedBy: request.requestedBy
+        });
+      }
+      
+      await updateDoc(doc(db, 'amendment_requests', request.id), {
+        status: newStatus,
+        ownerNotes,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update status");
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading requests...</div>;
+
+  const pendingRequests = requests.filter(r => r.status === 'Pending');
+  const pastRequests = requests.filter(r => r.status !== 'Pending');
+
+  return (
+    <div className="space-y-8">
+      <Card>
+        <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-3">
+          <div className="p-2 bg-indigo-50 rounded-lg">
+            <FileText className="w-6 h-6 text-indigo-600" />
+          </div>
+          Pending Amendment Approvals
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left border-b border-slate-100">
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">EMD details</th>
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">Requested By</th>
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider">Changes</th>
+                <th className="pb-4 font-bold text-slate-400 text-xs uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {pendingRequests.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-12 text-center text-slate-500">
+                    <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                    No pending amendment requests.
+                  </td>
+                </tr>
+              )}
+              {pendingRequests.map(req => (
+                <AmendmentRequestRow key={req.id} request={req} onAction={handleAction} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-3">
+          <div className="p-2 bg-slate-50 rounded-lg">
+            <History className="w-5 h-5 text-slate-500" />
+          </div>
+          Amendment History
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <tbody className="divide-y divide-slate-50">
+              {pastRequests.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="py-8 text-center text-slate-500">No amendment history found.</td>
+                </tr>
+              )}
+              {pastRequests.map(req => (
+                <tr key={req.id} className="group hover:bg-slate-50 transition-colors">
+                  <td className="py-4">
+                    <p className="font-bold text-slate-900">{req.emdNumber}</p>
+                    <p className="text-xs text-slate-500">Requested by: {req.requestedByName}</p>
+                  </td>
+                  <td className="py-4">
+                    <span className={cn("px-2 py-1 rounded-lg text-xs font-bold inline-block",
+                      req.status === 'Approved' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+                    )}>
+                      {req.status}
+                    </span>
+                  </td>
+                  <td className="py-4 text-sm text-slate-600 max-w-[300px] break-words">
+                    {req.ownerNotes ? (
+                      <span className="italic">" {req.ownerNotes} "</span>
+                    ) : (
+                      <span className="text-slate-400">No owner notes</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AmendmentRequestRow({ request, onAction }: { request: AmendmentRequest, onAction: any }) {
+  const [ownerNotes, setOwnerNotes] = useState('');
+  
+  const changes = Object.keys(request.newData).filter(key => {
+    if (key === 'id' || key === 'createdAt' || key === 'createdBy' || key === 'updatedAt') return false;
+    const oldVal = request.originalData[key as keyof EMDRecord];
+    const newVal = request.newData[key as keyof EMDRecord];
+    
+    // Simple comparison for strings, numbers, etc.
+    return JSON.stringify(oldVal) !== JSON.stringify(newVal);
+  });
+
+  return (
+    <tr className="group hover:bg-slate-50 transition-colors">
+      <td className="py-6">
+        <p className="font-bold text-slate-900">{request.emdNumber}</p>
+        <p className="text-xs text-slate-500 mt-1 bg-amber-50 inline-block px-2 py-0.5 rounded leading-relaxed">
+          {request.reason || 'Reason not provided'}
+        </p>
+      </td>
+      <td className="py-6 text-slate-600 font-bold text-sm">{request.requestedByName}</td>
+      <td className="py-6 text-slate-600 text-sm">
+        <div className="space-y-2">
+          {changes.map(key => (
+            <div key={key} className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold uppercase text-slate-400">{key}</span>
+              <div className="flex gap-2 items-center flex-wrap">
+                <span className="text-rose-500 line-through decoration-rose-300 text-xs">
+                  {String(request.originalData[key as keyof EMDRecord] ?? 'N/A')}
+                </span>
+                <ArrowUpRight className="w-3 h-3 text-slate-300" />
+                <span className="text-emerald-600 font-bold text-xs ring-1 ring-emerald-100 bg-emerald-50 px-1.5 rounded">
+                  {String(request.newData[key as keyof EMDRecord] ?? 'N/A')}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </td>
+      <td className="py-6 text-right space-y-3 min-w-[240px]">
+        <Input 
+          placeholder="Add review feedback..." 
+          className="text-xs" 
+          value={ownerNotes}
+          onChange={(e) => setOwnerNotes(e.target.value)}
+        />
+        <div className="flex gap-2 justify-end">
+          <Button size="sm" onClick={() => onAction(request, 'Approved', ownerNotes)} className="bg-emerald-600 border-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-100">
+            Apply Changes
+          </Button>
+          <Button size="sm" onClick={() => onAction(request, 'Rejected', ownerNotes)} variant="danger" className="shadow-sm shadow-rose-100">
+            Reject
+          </Button>
+        </div>
+      </td>
+    </tr>
   );
 }
