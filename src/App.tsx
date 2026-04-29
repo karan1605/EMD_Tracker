@@ -1962,6 +1962,18 @@ function SearchEditView() {
                 <Input label="Company" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} />
                 <Input label="Maturity Date" type="date" value={formData.maturityDate} onChange={(e) => setFormData({...formData, maturityDate: e.target.value})} />
                 <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">Deposit Location</label>
+                  <select 
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    value={formData.depositLocation || ''}
+                    onChange={(e) => setFormData({ ...formData, depositLocation: e.target.value as DepositLocation })}
+                  >
+                    <option value="">Select Location</option>
+                    <option value="Deposited in Department">Deposited in Department</option>
+                    <option value="In Office / Home">In Office / Home</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium text-slate-700">Delivery Method</label>
                   <select 
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -1973,6 +1985,14 @@ function SearchEditView() {
                     <option value="BY POST">BY POST</option>
                   </select>
                 </div>
+                {(formData.deliveryMethod === 'BY HAND' || formData.deliveryMethod === 'BY POST') && (
+                  <Input 
+                    label="Delivery Date" 
+                    type="date" 
+                    value={formData.deliveryDate || ''} 
+                    onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })} 
+                  />
+                )}
                 {formData.deliveryMethod === 'BY POST' && (
                   <Input 
                     label="Tracking ID" 
