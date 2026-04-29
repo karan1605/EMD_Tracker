@@ -1795,7 +1795,7 @@ function SearchEditView() {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
 
-  const handleFileUpload = async (file: File, field: 'photos') => {
+  const handleFileUpload = async (file: File, field: 'photos' | 'courierReceiptPhoto') => {
     if (!user) return;
     setUploading(field);
     try {
@@ -1813,7 +1813,11 @@ function SearchEditView() {
           }, 
           async () => {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
-            setFormData(prev => ({ ...prev, photos: [...(prev.photos || []), url] }));
+            if (field === 'photos') {
+              setFormData(prev => ({ ...prev, photos: [...(prev.photos || []), url] }));
+            } else {
+              setFormData(prev => ({ ...prev, [field]: url }));
+            }
             setUploading(null);
             resolve();
           }
@@ -1957,7 +1961,47 @@ function SearchEditView() {
                 <Input label="Bank" value={formData.bank} onChange={(e) => setFormData({...formData, bank: e.target.value})} />
                 <Input label="Company" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} />
                 <Input label="Maturity Date" type="date" value={formData.maturityDate} onChange={(e) => setFormData({...formData, maturityDate: e.target.value})} />
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">Delivery Method</label>
+                  <select 
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    value={formData.deliveryMethod || ''}
+                    onChange={(e) => setFormData({ ...formData, deliveryMethod: e.target.value as DeliveryMethod })}
+                  >
+                    <option value="">Select Method</option>
+                    <option value="BY HAND">BY HAND</option>
+                    <option value="BY POST">BY POST</option>
+                  </select>
+                </div>
+                {formData.deliveryMethod === 'BY POST' && (
+                  <Input 
+                    label="Tracking ID" 
+                    value={formData.trackingId || ''} 
+                    onChange={(e) => setFormData({ ...formData, trackingId: e.target.value })} 
+                  />
+                )}
              </div>
+
+             {formData.deliveryMethod === 'BY POST' && (
+               <div className="space-y-3 pt-6 border-t border-slate-100">
+                  <FileUpload 
+                    label="Courier Receipt Photo" 
+                    loading={uploading === 'courierReceiptPhoto'}
+                    onUpload={(file) => handleFileUpload(file as any, 'courierReceiptPhoto')}
+                  />
+                  {formData.courierReceiptPhoto && (
+                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200">
+                      <img src={formData.courierReceiptPhoto} alt="Receipt" className="w-full h-full object-cover" />
+                      <button 
+                        onClick={() => setFormData(prev => ({ ...prev, courierReceiptPhoto: undefined }))}
+                        className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+               </div>
+             )}
 
              <div className="space-y-3 pt-6 border-t border-slate-100">
                 <FileUpload 
