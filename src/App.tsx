@@ -1793,6 +1793,37 @@ function SearchEditView() {
   const [formData, setFormData] = useState<Partial<EMDRecord>>({});
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  const handleFileUpload = async (file: File, field: 'photos') => {
+    if (!user) return;
+    setUploading(field);
+    try {
+      const storageRef = ref(storage, `emd/${user.uid}/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      
+      return new Promise<void>((resolve, reject) => {
+        uploadTask.on('state_changed', 
+          null, 
+          (error) => {
+            console.error(error);
+            alert(`Upload failed: ${error.message}`);
+            setUploading(null);
+            reject(error);
+          }, 
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            setFormData(prev => ({ ...prev, photos: [...(prev.photos || []), url] }));
+            setUploading(null);
+            resolve();
+          }
+        );
+      });
+    } catch (err) {
+      console.error(err);
+      setUploading(null);
+    }
+  };
 
   const handleSearch = async () => {
     if (!emdNumber) return;
@@ -1926,6 +1957,27 @@ function SearchEditView() {
                 <Input label="Bank" value={formData.bank} onChange={(e) => setFormData({...formData, bank: e.target.value})} />
                 <Input label="Company" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} />
                 <Input label="Maturity Date" type="date" value={formData.maturityDate} onChange={(e) => setFormData({...formData, maturityDate: e.target.value})} />
+             </div>
+
+             <div className="space-y-3 pt-6 border-t border-slate-100">
+                <FileUpload 
+                  label="Add New EMD Photos" 
+                  loading={uploading === 'photos'}
+                  onUpload={(file) => handleFileUpload(file as any, 'photos')}
+                />
+                <div className="flex flex-wrap gap-3">
+                  {formData.photos?.map((url, idx) => (
+                    <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200">
+                      <img src={url} alt={`EMD ${idx}`} className="w-full h-full object-cover" />
+                      <button 
+                        onClick={() => setFormData(prev => ({ ...prev, photos: prev.photos?.filter((_, i) => i !== idx) }))}
+                        className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
              </div>
              
              <div className="space-y-4 pt-6 border-t border-slate-100">
