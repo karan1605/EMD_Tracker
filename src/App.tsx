@@ -1783,6 +1783,7 @@ function NotificationsView() {
 }
 
 function SearchEditView() {
+  const _forceUpdate = "FORCE_UPDATE_HASH_123456";
   const { user, profile } = useAuth();
   const [emdNumber, setEmdNumber] = useState('');
   const [record, setRecord] = useState<EMDRecord | null>(null);
@@ -1856,7 +1857,7 @@ function SearchEditView() {
                 <Search className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Search EMD for Amendment</h3>
+                <h3 className="text-xl font-bold text-slate-900">Search EMD for Amendment (V2)</h3>
                 <p className="text-sm text-slate-500">Find a record to suggest corrections or updates.</p>
               </div>
             </div>
